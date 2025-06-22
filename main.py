@@ -12,7 +12,7 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 def main():
     app = QApplication(sys.argv)
     window = QWidget()
-    window.setWindowTitle("360 Vision Viewer")
+    window.setWindowTitle("Rove Vision Viewer")
     window.resize(1280, 720)
 
     layout = QHBoxLayout()
