@@ -3,6 +3,11 @@ from control_panel import ControlPanel
 from video_widget import VideoWidget
 from stream_manager import StreamManager
 import sys
+import os
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
 
 def main():
     app = QApplication(sys.argv)
