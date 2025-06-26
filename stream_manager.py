@@ -1,67 +1,78 @@
+#!/usr/bin/env python3
 import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst, GLib
-import threading
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gst", "1.0")
+gi.require_version("GstVideo", "1.0")
+from gi.repository import Gtk, Gst, GdkX11, GstVideo
+
+Gst.init(None)
+
+
 
 STREAMS = {
     "rearcam": "rtsp://192.168.1.104:8554/rearcam",
     "raw360": "rtsp://192.168.1.104:8554/raw360",
-    "frontcam": None,
-    "dynamic360": None
+    "laptopTestCam": "rtsp://localhost:8554/test"
 }
 
 class StreamManager:
     def __init__(self):
         self.pipeline = None
         self.current_stream = None
-        self.video_widget = None
-        Gst.init(None)
+        self.sink = None
 
-    def switch_stream(self, name):
+    def switch_stream(self, name, video_widget):
         uri = STREAMS.get(name)
         if not uri or name == self.current_stream:
             return
 
         self.stop_stream()
+        print(f"Switching to {name} ({uri})")
 
-        self.pipeline = Gst.parse_launch(
-            f'rtspsrc location={uri} latency=0 ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGR ! appsink name=sink emit-signals=true sync=false'
-        )
+        video_widget.show_message(f"Loading {name}...")
+
+        def start_pipeline(_widget):
+            pipeline_str = f"""
+                rtspsrc location={uri} latency=100 !
+                rtph264depay ! avdec_h264 ! videoconvert !
+                ximagesink name=videosink sync=false
+            """
+
+            self.pipeline = Gst.parse_launch(pipeline_str)
+            self.sink = self.pipeline.get_by_name("videosink")
+
+            window = video_widget.drawing_area.get_window()
+            if not window:
+                print("Error: Drawing area has no window even after realization")
+                return
+
+            xid = window.get_xid()
+            self.sink.set_window_handle(xid)
+            
+
+            self.pipeline.set_state(Gst.State.PLAYING)
+            self.current_stream = name
+
+        # Wait for the drawing area to be realized before starting
+        if video_widget.drawing_area.get_realized():
+            start_pipeline(video_widget.drawing_area)
+        else:
+            video_widget.drawing_area.connect("realize", start_pipeline)
 
 
-        appsink = self.pipeline.get_by_name('sink')
-        appsink.connect('new-sample', self.on_new_sample)
+    def _on_sync_message(self, bus, msg, video_widget):
+        if msg.get_structure() and msg.get_structure().get_name() == "prepare-window-handle":
+            def safe_set_handle(_widget):
+                window = video_widget.drawing_area.get_window()
+                if window:
+                    msg.src.set_window_handle(window.get_xid())
 
-        self.pipeline.set_state(Gst.State.PLAYING)
-        self.current_stream = name
+            # If realized, set immediately; else defer
+            if video_widget.drawing_area.get_realized():
+                safe_set_handle(video_widget.drawing_area)
+            else:
+                video_widget.drawing_area.connect_once("realize", safe_set_handle)
 
-    def on_new_sample(self, sink):
-        sample = sink.emit('pull-sample')
-        if sample is None or self.video_widget is None:
-            return Gst.FlowReturn.OK
-
-        buf = sample.get_buffer()
-        caps = sample.get_caps()
-        structure = caps.get_structure(0)
-        width = structure.get_value('width')
-        success, map_info = buf.map(Gst.MapFlags.READ)
-
-        if success:
-            import numpy as np
-            import cv2
-            size = map_info.size
-            height = size // (width * 3)
-
-            frame = np.frombuffer(map_info.data, dtype=np.uint8)
-            try:
-                frame = frame.reshape((height, width, 3))
-                self.video_widget.update_image(frame)
-            except ValueError:
-                pass  # skip bad frames
-
-            buf.unmap(map_info)
-
-        return Gst.FlowReturn.OK
 
 
     def stop_stream(self):
@@ -69,3 +80,6 @@ class StreamManager:
             self.pipeline.set_state(Gst.State.NULL)
             self.pipeline = None
             self.current_stream = None
+
+
+
