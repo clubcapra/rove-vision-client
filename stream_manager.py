@@ -11,12 +11,12 @@ STREAMS = {
     "rearcam": {
         "width": 1920,
         "height": 1080,
-        "url": "rtsp://192.168.1.104:8554/rearcam"
+        "url": "rtsp://jetson-rove.local:8554/rearcam"
     },
     "raw360": {
         "width": 2880,
         "height": 1440,
-        "url": "rtsp://192.168.1.104:8554/raw360"
+        "url": "rtsp://jetson-rove.local:8554/raw360"
     },
     "laptopTestCam": {
         "width": 2592,
@@ -48,13 +48,13 @@ class StreamManager:
             pipeline_str = f"""
                 rtspsrc location={uri} latency=100 !
                 rtph264depay ! avdec_h264 ! videoconvert ! videoscale !
-                video/x-raw,width={width},height={height} ! ximagesink
-                name=videosink sync=false
+                ximagesink name=videosink sync=false
             """
+
             self.pipeline = Gst.parse_launch(pipeline_str)
             self.sink = self.pipeline.get_by_name("videosink")
             self.sink.set_property("force-aspect-ratio", True)
-
+            video_widget.get_toplevel().resize(width, height)
             window = video_widget.drawing_area.get_window()
             if not window:
                 print("Error: Drawing area has no window even after realization")
@@ -70,7 +70,6 @@ class StreamManager:
             start_pipeline(video_widget.drawing_area)
         else:
             video_widget.drawing_area.connect("realize", start_pipeline)
-
 
 
     def _on_sync_message(self, bus, msg, video_widget):
