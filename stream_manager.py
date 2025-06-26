@@ -7,12 +7,22 @@ from gi.repository import Gtk, Gst, GdkX11, GstVideo
 
 Gst.init(None)
 
-
-
 STREAMS = {
-    "rearcam": "rtsp://192.168.1.104:8554/rearcam",
-    "raw360": "rtsp://192.168.1.104:8554/raw360",
-    "laptopTestCam": "rtsp://localhost:8554/test"
+    "rearcam": {
+        "width": 1920,
+        "height": 1080,
+        "url": "rtsp://192.168.1.104:8554/rearcam"
+    },
+    "raw360": {
+        "width": 2880,
+        "height": 1440,
+        "url": "rtsp://192.168.1.104:8554/raw360"
+    },
+    "laptopTestCam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    }
 }
 
 class StreamManager:
@@ -22,24 +32,28 @@ class StreamManager:
         self.sink = None
 
     def switch_stream(self, name, video_widget):
-        uri = STREAMS.get(name)
-        if not uri or name == self.current_stream:
+        stream_info = STREAMS.get(name)
+        if not stream_info or name == self.current_stream:
             return
 
         self.stop_stream()
-        print(f"Switching to {name} ({uri})")
-
+        print(f"Switching to {name} ({stream_info['url']})")
         video_widget.show_message(f"Loading {name}...")
+
+        width = stream_info.get("width")
+        height = stream_info.get("height")
+        uri = stream_info.get("url")
 
         def start_pipeline(_widget):
             pipeline_str = f"""
                 rtspsrc location={uri} latency=100 !
-                rtph264depay ! avdec_h264 ! videoconvert !
-                ximagesink name=videosink sync=false
+                rtph264depay ! avdec_h264 ! videoconvert ! videoscale !
+                video/x-raw,width={width},height={height} ! ximagesink
+                name=videosink sync=false
             """
-
             self.pipeline = Gst.parse_launch(pipeline_str)
             self.sink = self.pipeline.get_by_name("videosink")
+            self.sink.set_property("force-aspect-ratio", True)
 
             window = video_widget.drawing_area.get_window()
             if not window:
@@ -48,17 +62,15 @@ class StreamManager:
 
             xid = window.get_xid()
             self.sink.set_window_handle(xid)
-            #self.sink.set_property("force-aspect-ratio", True)
-
 
             self.pipeline.set_state(Gst.State.PLAYING)
             self.current_stream = name
 
-        # Wait for the drawing area to be realized before starting
         if video_widget.drawing_area.get_realized():
             start_pipeline(video_widget.drawing_area)
         else:
             video_widget.drawing_area.connect("realize", start_pipeline)
+
 
 
     def _on_sync_message(self, bus, msg, video_widget):
