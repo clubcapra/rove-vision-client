@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout
 from control_panel import ControlPanel
 from video_widget import VideoWidget
-from stream_manager import StreamManager
+from stream_manager import StreamManager, STREAMS
 import sys
 import os
 os.environ["QT_QPA_PLATFORM"] = "xcb"
@@ -19,7 +19,10 @@ def main():
 
     stream_manager = StreamManager()
     video_widget = VideoWidget(stream_manager)
-    control_panel = ControlPanel(stream_manager)
+
+    available_cams = [k for k, v in STREAMS.items() if v is not None]
+    control_panel = ControlPanel(stream_manager, available_cams)
+    #control_panel = ControlPanel(stream_manager)
 
     layout.addWidget(video_widget, stretch=4)
     layout.addWidget(control_panel, stretch=1)
