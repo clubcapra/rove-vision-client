@@ -20,8 +20,7 @@ def main():
     stream_manager = StreamManager()
     video_widget = VideoWidget(stream_manager)
 
-    available_cams = [k for k, v in STREAMS.items() if v is not None]
-    control_panel = ControlPanel(stream_manager, available_cams)
+    control_panel = ControlPanel(stream_manager, STREAMS)
     #control_panel = ControlPanel(stream_manager)
 
     layout.addWidget(video_widget, stretch=4)

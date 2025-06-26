@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 class ControlPanel(QWidget):
-    def __init__(self, stream_manager, available_cams):
+    def __init__(self, stream_manager, streams_info):
         super().__init__()
 
         self.stream_manager = stream_manager
@@ -17,11 +17,19 @@ class ControlPanel(QWidget):
 
         # Camera buttons
         layout.addWidget(QLabel("Cameras:"))
+        # self.front_btn = self._add_button(layout, "Front Camera", lambda: self._switch("frontcam"))
+        # self.rear_btn = self._add_button(layout, "Rear Camera", lambda: self._switch("rearcam"))
+        # self.raw360_btn = self._add_button(layout, "Raw 360°", lambda: self._switch("raw360"))
+        # self.dynamic360_btn = self._add_button(layout, "Dynamic 360°", lambda: self._switch("dynamic360"))
+
+        # # Disable unused cams
+        # self.front_btn.setEnabled(False)
+        # self.dynamic360_btn.setEnabled(False)
+
         self.cam_buttons = {}
-        for cam_name in available_cams:
-            label = cam_name.capitalize().replace("cam", " Camera").replace("360", "360°")
-            btn = self._add_button(layout, label, lambda n=cam_name: self._switch(n))
-            self.cam_buttons[cam_name] = btn
+        for name in streams_info:
+            btn = self._add_button(layout, name, lambda: self._switch(name))
+            self.cam_buttons[name] = btn
 
         layout.addSpacing(20)
         layout.addWidget(QLabel("Pan/Zoom:"))
