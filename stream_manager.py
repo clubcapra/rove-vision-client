@@ -48,7 +48,8 @@ class StreamManager:
 
             xid = window.get_xid()
             self.sink.set_window_handle(xid)
-            
+            #self.sink.set_property("force-aspect-ratio", True)
+
 
             self.pipeline.set_state(Gst.State.PLAYING)
             self.current_stream = name
