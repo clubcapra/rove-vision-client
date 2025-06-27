@@ -18,13 +18,40 @@ class MainWindow(Gtk.Window):
         self.set_default_size(1280, 720)
 
         hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        hbox_videos = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.add(hbox)
 
         self.stream_manager = StreamManager()
+        self.stream_manager_rear = StreamManager()
+        self.stream_manager_front = StreamManager()
+
+        # Vertical box to hold the main video widget + two additional widgets stacked vertically
+        vbox_videos = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+
+        # Main video widget with stream and control panel
         self.video_widget = VideoWidget()
+
+        # Two additional video widgets without controls or streams
+        self.video_widget_rear = VideoWidget()
+        self.video_widget_front = VideoWidget()
+
+        # Pack the two new widgets below
+        hbox_videos.pack_start(self.video_widget_rear, True, True, 0)
+        hbox_videos.pack_start(self.video_widget_front, True, True, 0)
+
+        # Pack main video widget on top
+        vbox_videos.pack_start(self.video_widget, True, True, 0)
+        vbox_videos.pack_start(hbox_videos, True, True, 0)
+        
+        
+        self.stream_manager.switch_stream("insta360", self.video_widget)
+        self.stream_manager_rear.switch_stream("rear", self.video_widget_rear)
+        # self.stream_manager_front.switch_stream("front", self.video_widget_front)
+
+        # Control panel on the right for the main video widget only
         control_panel = ControlPanel(self.stream_manager, self.video_widget)
 
-        hbox.pack_start(self.video_widget, True, True, 0)
+        hbox.pack_start(vbox_videos, True, True, 0)
         hbox.pack_start(control_panel, False, False, 0)
 
         self.connect("destroy", self.on_destroy)
