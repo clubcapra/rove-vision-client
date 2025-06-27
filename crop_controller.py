@@ -88,9 +88,10 @@ class CropController:
             "bottom": bottom
         }
 
-        print(f"Zoom {self.zoom_percent}% @ ({self.center_x},{self.center_y}) → Crop: {crop_data}")
-        try:
-            response = requests.post("http://jetson-rove.local:8080/crop", json=crop_data)
-            response.raise_for_status()
-        except Exception as e:
-            print(f"Failed to send crop request: {e}")
+        #print(f"Zoom {self.zoom_percent}% @ ({self.center_x},{self.center_y}) → Crop: {crop_data}")
+        #try:
+        #    response = requests.post("http://jetson-rove.local:8080/crop", json=crop_data)
+        #    response.raise_for_status()
+        #except Exception as e:
+        #    print(f"Failed to send crop request: {e}")
+        print("Crop disabled for now")
