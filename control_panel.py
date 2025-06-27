@@ -4,7 +4,7 @@ from stream_manager import STREAMS
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gst", "1.0")
 gi.require_version("GstVideo", "1.0")
-from gi.repository import Gtk, Gst, GdkX11, GstVideo
+from gi.repository import Gtk, Gst, GLib, Gdk, GdkX11, GstVideo
 
 Gst.init(None)
 
@@ -16,6 +16,13 @@ class ControlPanel(Gtk.Box):
         self.look_back = False
 
         self.stream_manager = stream_manager
+        
+        self.pan_timer = None
+        self.pan_direction = None
+        
+        self.zoom_timer = None
+        self.zoom_direction = None
+
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -86,14 +93,26 @@ class ControlPanel(Gtk.Box):
         self.pack_start(scroll, True, True, 0)
 
         # === Signal handlers ===
-        btn_left.connect("clicked", self.on_pan_left)
-        btn_right.connect("clicked", self.on_pan_right)
-        btn_up.connect("clicked", self.on_pan_up)
-        btn_down.connect("clicked", self.on_pan_down)
+        for btn, direction in [
+            (btn_left, "left"),
+            (btn_right, "right"),
+            (btn_up, "up"),
+            (btn_down, "down")
+        ]:
+            btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
+            btn.connect("button-press-event", self.start_pan, direction)
+            btn.connect("button-release-event", self.stop_pan)
+            
         btn_reset.connect("clicked", self.on_reset)
 
-        btn_plus.connect("clicked", lambda b: self.adjust_zoom(0.5))
-        btn_minus.connect("clicked", lambda b: self.adjust_zoom(-0.5))
+        for btn, direction in [
+            (btn_plus, "in"),
+            (btn_minus, "out")
+        ]:
+            btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
+            btn.connect("button-press-event", self.start_zoom, direction)
+            btn.connect("button-release-event", self.stop_zoom)
+
         self.zoom_slider.connect("value-changed", self.on_slider_zoom)
         
         
@@ -101,16 +120,16 @@ class ControlPanel(Gtk.Box):
         self.entry.connect("focus-out-event", self.on_entry)
         
     def on_pan_left(self, _):
-        self.stream_manager.set_angle(self.stream_manager.angle - 10)
+        self.stream_manager.set_angle(self.stream_manager.angle - 10 / self.stream_manager.zoom)
 
     def on_pan_right(self, _):
-        self.stream_manager.set_angle(self.stream_manager.angle + 10)
+        self.stream_manager.set_angle(self.stream_manager.angle + 10 / self.stream_manager.zoom)
 
     def on_pan_up(self, _):
-        self.stream_manager.set_top(self.stream_manager.top - 5)
+        self.stream_manager.set_top(self.stream_manager.top - 5 / self.stream_manager.zoom)
 
     def on_pan_down(self, _):
-        self.stream_manager.set_top(self.stream_manager.top + 5)
+        self.stream_manager.set_top(self.stream_manager.top + 5 / self.stream_manager.zoom)
 
     def on_reset(self, _):
         self.stream_manager.set_top(50)
@@ -121,6 +140,9 @@ class ControlPanel(Gtk.Box):
             self.stream_manager.set_angle(180)
         else:
             self.stream_manager.set_angle(0)
+        
+        self.stream_manager.set_zoom(1)
+        self.reflect_zoom()
 
     def adjust_zoom(self, delta):
         self.stream_manager.set_zoom(self.stream_manager.zoom + delta)
@@ -143,3 +165,46 @@ class ControlPanel(Gtk.Box):
         self.zoom_slider.set_value(self.stream_manager.zoom)
         self.entry.set_text(f"{self.stream_manager.zoom}")
         
+    def start_pan(self, widget, event, direction):
+        if self.pan_timer is None:
+            self.pan_direction = direction
+            self.pan_timer = GLib.timeout_add(50, self.do_pan)  # 100ms repeat
+
+    def stop_pan(self, widget, event):
+        if self.pan_timer:
+            GLib.source_remove(self.pan_timer)
+            self.pan_timer = None
+            self.pan_direction = None
+
+    def do_pan(self):
+        if self.pan_direction == "left":
+            self.on_pan_left(None)
+        elif self.pan_direction == "right":
+            self.on_pan_right(None)
+        elif self.pan_direction == "up":
+            self.on_pan_up(None)
+        elif self.pan_direction == "down":
+            self.on_pan_down(None)
+        return True  # Keep repeating
+    
+    def start_zoom(self, widget, event, direction):
+        if self.zoom_timer is None:
+            self.zoom_direction = direction
+            self.zoom_timer = GLib.timeout_add(50, self.do_zoom)
+
+    def stop_zoom(self, widget, event):
+        if self.zoom_timer:
+            GLib.source_remove(self.zoom_timer)
+            self.zoom_timer = None
+            self.zoom_direction = None
+
+    def do_zoom(self):
+        delta = 0.1 if self.zoom_direction == "in" else -0.1
+        
+        if self.stream_manager.zoom > 5:
+            delta = delta * 2
+        if self.stream_manager.zoom > 10:
+            delta = delta * 5
+        self.adjust_zoom(delta)
+        return True  # Keep repeating
+
