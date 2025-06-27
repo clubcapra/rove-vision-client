@@ -1,6 +1,6 @@
 import gi
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst
+from gi.repository import Gst, GLib
 
 import cv2
 import numpy as np
@@ -31,28 +31,41 @@ class StreamManager:
         self.caps_set = False
         self.is_pan_zoom = False
 
-        # Pan/zoom parameters
-        self.angle = 0.0  # horizontal pan in degrees
-        self.zoom = 1.0   # zoom factor
-        self.top = 50.0  # top offset in %
-        self.requested_width = 2160  # final output width (you can adjust)
+        # Pan/zoom params
+        self.angle = 0.0
+        self.zoom = 1.0
+        self.top = 50.0
+        self.requested_width = 2160
+
+        # Reconnect logic
+        self._last_stream_name = None
+        self._last_video_widget = None
+        self.reconnect_attempts = 0
+        self.reconnect_max_attempts = 5
+        self.reconnect_delay_ms = 2000
+        self._reconnecting = False
 
     def switch_stream(self, name, video_widget):
+        self._last_stream_name = name
+        self._last_video_widget = video_widget
+        self._reconnecting = False  # reset flag on success
+        self.reconnect_attempts = 0
+
         self.is_pan_zoom = name == "insta360"
-        
         stream_info = STREAMS.get(name)
         if not stream_info:
+            print(f"[!] Unknown stream: {name}")
             return
 
         self.stop_stream()
         print(f"Switching to {name} ({stream_info['url']})")
         video_widget.show_message(f"Loading {name}...")
-        
+
         width = stream_info.get("width")
         height = stream_info.get("height")
         uri = stream_info.get("url")
 
-        # Pipeline to show frames
+        # Display pipeline
         self.display_pipeline = Gst.parse_launch(f"""
             appsrc name=customsrc is-live=true block=true format=time !
             videoconvert ! videoscale ! ximagesink name=videosink sync=false
@@ -62,7 +75,7 @@ class StreamManager:
 
         self.sink = self.display_pipeline.get_by_name("videosink")
         self.sink.set_property("force-aspect-ratio", True)
-        
+
         area = video_widget.drawing_area
         if area.get_realized():
             self.sink.set_window_handle(area.get_window().get_xid())
@@ -71,7 +84,7 @@ class StreamManager:
 
         self.display_pipeline.set_state(Gst.State.PLAYING)
 
-        # RTSP frame puller
+        # RTSP pipeline
         self.rtsp_pipeline = Gst.parse_launch(f"""
             rtspsrc location={uri} latency=0 !
             rtph264depay ! avdec_h264 ! videoconvert !
@@ -81,10 +94,69 @@ class StreamManager:
         self.appsink = self.rtsp_pipeline.get_by_name("framesink")
         self.appsink.connect("new-sample", self.on_new_sample)
 
+        # Add bus watch for errors
+        bus = self.rtsp_pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message", self.on_bus_message)
+
         self.running = True
         self._framecount = 0
         self.caps_set = False
         self.rtsp_pipeline.set_state(Gst.State.PLAYING)
+
+    def on_bus_message(self, bus, message):
+        msg_type = message.type
+        if msg_type == Gst.MessageType.ERROR:
+            err, debug = message.parse_error()
+            print(f"[!] RTSP Error: {err.message}")
+            if debug:
+                print(f"    Debug Info: {debug}")
+            self.stop_stream()
+            self.schedule_reconnect()
+
+        elif msg_type == Gst.MessageType.EOS:
+            print("[!] RTSP End of Stream")
+            self.stop_stream()
+            self.schedule_reconnect()
+
+        elif msg_type == Gst.MessageType.STATE_CHANGED:
+            old, new, pending = message.parse_state_changed()
+            if message.src == self.rtsp_pipeline:
+                print(f"[RTSP] State changed from {old.value_nick} to {new.value_nick}")
+
+    def schedule_reconnect(self):
+        if self._reconnecting:
+            return
+        if not self._last_stream_name or not self._last_video_widget:
+            print("[!] No stream to reconnect to.")
+            return
+
+        self._reconnecting = True
+        self.reconnect_attempts = self.reconnect_max_attempts
+        print(f"[*] Reconnecting in {self.reconnect_delay_ms // 1000}s (max {self.reconnect_max_attempts} attempts)...")
+        GLib.timeout_add(self.reconnect_delay_ms, self._retry_connection)
+
+    def _retry_connection(self):
+        if not self._last_stream_name or not self._last_video_widget:
+            print("[!] Missing stream info for reconnection.")
+            self._reconnecting = False
+            return False
+
+        if self.reconnect_attempts <= 0:
+            print("[X] Reconnection failed: max attempts reached.")
+            self._reconnecting = False
+            return False
+
+        print(f"[*] Attempting reconnect... ({self.reconnect_max_attempts - self.reconnect_attempts + 1}/{self.reconnect_max_attempts})")
+        self.reconnect_attempts -= 1
+        try:
+            self.switch_stream(self._last_stream_name, self._last_video_widget)
+            print("[✓] Reconnection successful.")
+            return False  # stop retry loop
+        except Exception as e:
+            print(f"[!] Reconnect attempt failed: {e}")
+            GLib.timeout_add(self.reconnect_delay_ms, self._retry_connection)
+            return False  # reschedule manually
 
     def on_new_sample(self, sink):
         sample = sink.emit("pull-sample")
@@ -106,7 +178,7 @@ class StreamManager:
                 processed = self.apply_pan_zoom(frame)
             else:
                 processed = frame
-            
+
             if not self.caps_set:
                 if self.is_pan_zoom:
                     caps_str = f"video/x-raw,format=BGR,width={self.requested_width},height={height},framerate=30/1"
@@ -116,7 +188,6 @@ class StreamManager:
                 self.caps_set = True
 
             self.push_frame_to_appsrc(processed)
-
         finally:
             buf.unmap(map_info)
 
@@ -131,7 +202,7 @@ class StreamManager:
 
         start_y = int((height - crop_height) * self.top / 100.0)
         start_x = (width - crop_width) // 2 + int(self.angle * width / 360.0)
-        start_x = start_x % width  # wrap around horizontally
+        start_x = start_x % width
 
         if start_x + crop_width <= width:
             requested_part = img[start_y:start_y + crop_height, start_x:start_x + crop_width]
@@ -165,15 +236,17 @@ class StreamManager:
         self.caps_set = False
 
         if self.rtsp_pipeline:
+            bus = self.rtsp_pipeline.get_bus()
+            bus.remove_signal_watch()
             self.rtsp_pipeline.set_state(Gst.State.NULL)
             self.rtsp_pipeline = None
+
         if self.display_pipeline:
             self.display_pipeline.set_state(Gst.State.NULL)
             self.display_pipeline = None
 
         cv2.destroyAllWindows()
 
-    # Optionally add setters
     def set_zoom(self, zoom: float):
         self.zoom = max(1.0, zoom)
 
