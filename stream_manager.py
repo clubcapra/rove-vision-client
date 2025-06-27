@@ -31,13 +31,24 @@ class StreamManager:
         self.pipeline = None
         self.current_stream = None
         self.sink = None
-        self._reconnect_timer = None
         self._video_widget = None
+        self._crop_controller = None
 
-    def switch_stream(self, name, video_widget):
+    def set_crop_controller(self, crop_controller):
+        self._crop_controller = crop_controller
+
+    def switch_stream(self, name, video_widget, preserve_crop=False):
         stream_info = STREAMS.get(name)
-        if not stream_info or name == self.current_stream:
+        if not stream_info or (name != self.current_stream and self.current_stream == name):
             return
+
+        saved_zoom = None
+        saved_cx = None
+        saved_cy = None
+        if preserve_crop and self._crop_controller:
+            saved_zoom = self._crop_controller.zoom_percent
+            saved_cx = self._crop_controller.center_x
+            saved_cy = self._crop_controller.center_y
 
         self.stop_stream()
         print(f"Switching to {name} ({stream_info['url']})")
@@ -50,17 +61,15 @@ class StreamManager:
         height = stream_info["height"]
 
         def start_pipeline(_widget):
-            pipeline_str = f"""
-                rtspsrc location={uri} latency=100 !
-                rtph264depay ! avdec_h264 ! videoconvert ! videoscale !
-                ximagesink name=videosink sync=false
-            """
-
+            pipeline_str = (
+                f"rtspsrc location={uri} latency=100 ! "
+                f"rtph264depay ! avdec_h264 ! videoconvert ! videoscale ! "
+                f"ximagesink name=videosink sync=false"
+            )
             self.pipeline = Gst.parse_launch(pipeline_str)
             self.sink = self.pipeline.get_by_name("videosink")
             self.sink.set_property("force-aspect-ratio", True)
 
-            # Attach to window
             window = video_widget.drawing_area.get_window()
             if not window:
                 print("Error: drawing area not ready")
@@ -68,12 +77,17 @@ class StreamManager:
             self.sink.set_window_handle(window.get_xid())
             video_widget.get_toplevel().resize(width, height)
 
-            # Bus watch
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
             bus.connect("message", self._on_bus_message)
 
             self.pipeline.set_state(Gst.State.PLAYING)
+
+            if preserve_crop and self._crop_controller and saved_zoom is not None:
+                self._crop_controller.zoom_percent = saved_zoom
+                self._crop_controller.center_x = saved_cx
+                self._crop_controller.center_y = saved_cy
+                self._crop_controller._apply_zoom()
 
         if video_widget.drawing_area.get_realized():
             start_pipeline(video_widget.drawing_area)
@@ -85,31 +99,18 @@ class StreamManager:
         if t == Gst.MessageType.ERROR:
             err, debug = msg.parse_error()
             print(f"[GStreamer ERROR] {err.message}")
-            self._start_reconnect_loop()
+            self._retry_connect()
         elif t == Gst.MessageType.EOS:
             print("[GStreamer] End of Stream")
-            self._start_reconnect_loop()
-
-    def _start_reconnect_loop(self):
-        self.stop_stream()
-        if self._video_widget:
-            self._video_widget.show_message("Stream disconnected. Reconnecting...")
-
-        if self._reconnect_timer:
-            GLib.source_remove(self._reconnect_timer)
-        self._reconnect_timer = GLib.timeout_add_seconds(1, self._retry_connect)
+            self._retry_connect()
 
     def _retry_connect(self):
-        print(f"[RETRY] Trying to reconnect to {self.current_stream}")
         if self._video_widget and self.current_stream:
-            self.switch_stream(self.current_stream, self._video_widget)
-        return False  # Stop this instance of timeout (we re-create it inside switch_stream if needed)
+            print(f"[RETRY] Reconnecting to {self.current_stream}")
+            self.switch_stream(self.current_stream, self._video_widget, preserve_crop=True)
 
     def stop_stream(self):
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
             self.pipeline = None
-        if self._reconnect_timer:
-            GLib.source_remove(self._reconnect_timer)
-            self._reconnect_timer = None
         self.current_stream = None

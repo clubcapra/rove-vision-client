@@ -5,7 +5,7 @@ class CropController:
     def __init__(self, video_widget, stream_manager):
         self.video_widget = video_widget
         self.stream_manager = stream_manager
-        self.zoom_percent = 0  # 0–100%
+        self.zoom_percent = 0
         self.center_x = None
         self.center_y = None
 
@@ -51,12 +51,10 @@ class CropController:
         half_visible_w = visible_w // 2
         half_visible_h = visible_h // 2
 
-        # Update center, then clamp
         self.center_x = max(half_visible_w, min(width - half_visible_w, self.center_x + dx * 50))
         self.center_y = max(half_visible_h, min(height - half_visible_h, self.center_y + dy * 50))
 
         self._apply_zoom()
-
 
     def _apply_zoom(self):
         stream_name = self.stream_manager.current_stream
@@ -78,7 +76,6 @@ class CropController:
         crop_x = int(max_crop_x * (self.zoom_percent / 100))
         crop_y = int(max_crop_y * (self.zoom_percent / 100))
 
-        # Compute visible window around center
         left = max(0, self.center_x - (width // 2 - crop_x))
         right = max(0, width - (self.center_x + (width // 2 - crop_x)))
         top = max(0, self.center_y - (height // 2 - crop_y))
