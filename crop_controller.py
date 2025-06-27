@@ -40,14 +40,23 @@ class CropController:
         if self.center_y is None:
             self.center_y = height // 2
 
-        self.center_x += dx * 50
-        self.center_y += dy * 50
+        max_crop_x = int(width * 0.9 / 2)
+        max_crop_y = int(height * 0.9 / 2)
+        crop_x = int(max_crop_x * (self.zoom_percent / 100))
+        crop_y = int(max_crop_y * (self.zoom_percent / 100))
 
-        # Clamp to image bounds
-        self.center_x = max(0, min(width, self.center_x))
-        self.center_y = max(0, min(height, self.center_y))
+        visible_w = width - crop_x * 2
+        visible_h = height - crop_y * 2
+
+        half_visible_w = visible_w // 2
+        half_visible_h = visible_h // 2
+
+        # Update center, then clamp
+        self.center_x = max(half_visible_w, min(width - half_visible_w, self.center_x + dx * 50))
+        self.center_y = max(half_visible_h, min(height - half_visible_h, self.center_y + dy * 50))
 
         self._apply_zoom()
+
 
     def _apply_zoom(self):
         stream_name = self.stream_manager.current_stream
