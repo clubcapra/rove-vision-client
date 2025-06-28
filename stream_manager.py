@@ -18,6 +18,11 @@ STREAMS = {
         "height": 1440,
         "url": "rtsp://jetson-rove.local:8554/raw360"
     },
+    "zedmini": {
+        "width":  1280,
+        "height": 720,
+        "url": "rtsp://jetson-rove.local:8554/zedmini"
+    }
 }
 
 class StreamManager:
