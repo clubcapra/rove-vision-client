@@ -7,21 +7,28 @@ import numpy as np
 
 Gst.init(None)
 
+host = "192.168.1.137" # jetson-rove.local
+
 STREAMS = {
+    "front": {
+        "width": 1920,
+        "height": 1080,
+        "url": f"rtsp://{host}:8554/frontcam"
+    },
     "rear": {
         "width": 1920,
         "height": 1080,
-        "url": "rtsp://jetson-rove.local:8554/rearcam"
+        "url": f"rtsp://{host}:8554/rearcam"
     },
     "insta360": {
         "width": 2880,
         "height": 1440,
-        "url": "rtsp://jetson-rove.local:8554/raw360"
+        "url": f"rtsp://{host}:8554/raw360"
     },
     "zedmini": {
         "width":  1280,
         "height": 720,
-        "url": "rtsp://jetson-rove.local:8554/zedmini"
+        "url": f"rtsp://{host}:8554/zedmini"
     }
 }
 
@@ -91,7 +98,7 @@ class StreamManager:
 
         # RTSP pipeline
         self.rtsp_pipeline = Gst.parse_launch(f"""
-            rtspsrc location={uri} latency=0 !
+            rtspsrc location={uri} latency=0 protocols=tcp !
             rtph264depay ! avdec_h264 ! videoconvert !
             video/x-raw,format=BGR !
             appsink name=framesink emit-signals=true max-buffers=1 drop=true

@@ -49,8 +49,8 @@ class MainWindow(Gtk.Window):
         
         self.stream_manager.switch_stream("insta360", self.video_widget)
         self.stream_manager_rear.switch_stream("rear", self.video_widget_rear)
-        # self.stream_manager_front.switch_stream("front", self.video_widget_front)
-        self.stream_manager_front.switch_stream("zedmini", self.video_widget_zedmini)
+        self.stream_manager_front.switch_stream("front", self.video_widget_front)
+        self.stream_manager_zedmini.switch_stream("zedmini", self.video_widget_zedmini)
 
         # Control panel on the right for the main video widget only
         control_panel = ControlPanel(self.stream_manager, self.video_widget)
