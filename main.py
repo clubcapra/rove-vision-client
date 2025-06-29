@@ -7,61 +7,61 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gst", "1.0")
 gi.require_version("GstVideo", "1.0")
-from gi.repository import Gtk, Gst, GdkX11, GstVideo
+from gi.repository import Gtk, Gst, Gdk, GdkX11, GstVideo
 
 Gst.init(None)
 
+# Constants
+CONTROL_PANEL_MIN_WIDTH = 200  # px
+CONTROL_PANEL_MIN_HEIGHT = 200  # px
 
 class MainWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title="Rove Vision Viewer")
-        self.set_default_size(1280, 720)
 
-        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        hbox_videos = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        self.add(hbox)
+        # Calculated minimum window size
+        min_width = CONTROL_PANEL_MIN_WIDTH * 4  # 3:1 ratio
+        min_height = int(CONTROL_PANEL_MIN_HEIGHT / 0.75)
+        self.set_default_size(min_width, min_height)
+        self.set_size_request(min_width, min_height)
 
-        self.stream_manager = StreamManager()
-        self.stream_manager_rear = StreamManager()
-        self.stream_manager_front = StreamManager()
-        self.stream_manager_zedmini = StreamManager()
+        # Paned layout
+        self.paned = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
+        self.add(self.paned)
 
-        # Vertical box to hold the main video widget + two additional widgets stacked vertically
-        vbox_videos = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        # Control publisher
+        self.control_panel = ControlPanel()
+        self.control_panel.set_size_request(-1, CONTROL_PANEL_MIN_HEIGHT)
 
-        # Main video widget with stream and control panel
-        self.video_widget = VideoWidget()
+        # Stream managers
+        self.stream_manager_main = StreamManager(self.control_panel)
+        self.stream_manager_rear = StreamManager(self.control_panel)
 
-        # Two additional video widgets without controls or streams
-        self.video_widget_rear = VideoWidget()
-        self.video_widget_front = VideoWidget()
-        self.video_widget_zedmini = VideoWidget()
+        # Video widgets
+        self.main_viewport = VideoWidget(self.stream_manager_main)
+        self.secondary_viewport = VideoWidget(self.stream_manager_rear)
 
-        # Pack the two new widgets below
-        hbox_videos.pack_start(self.video_widget_rear, True, True, 0)
-        hbox_videos.pack_start(self.video_widget_front, True, True, 0)
-        hbox_videos.pack_start(self.video_widget_zedmini, True, True, 0)
+        # Sidebar
+        vbox_sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        vbox_sidebar.set_size_request(CONTROL_PANEL_MIN_WIDTH, -1)
+        vbox_sidebar.pack_start(self.control_panel, False, False, 0)
+        vbox_sidebar.pack_start(self.secondary_viewport, True, True, 0)
 
-        # Pack main video widget on top
-        vbox_videos.pack_start(self.video_widget, True, True, 0)
-        vbox_videos.pack_start(hbox_videos, True, True, 0)
-        
-        
-        self.stream_manager.switch_stream("insta360", self.video_widget)
-        self.stream_manager_rear.switch_stream("rear", self.video_widget_rear)
-        self.stream_manager_front.switch_stream("front", self.video_widget_front)
-        self.stream_manager_zedmini.switch_stream("zedmini", self.video_widget_zedmini)
+        self.paned.pack1(self.main_viewport, resize=True, shrink=False)
+        self.paned.pack2(vbox_sidebar, resize=False, shrink=False)
 
-        # Control panel on the right for the main video widget only
-        control_panel = ControlPanel(self.stream_manager, self.video_widget)
-
-        hbox.pack_start(vbox_videos, True, True, 0)
-        hbox.pack_start(control_panel, False, False, 0)
+        # Update divider dynamically on resize
+        self.connect("configure-event", self.on_resize)
 
         self.connect("destroy", self.on_destroy)
 
+    def on_resize(self, widget, event):
+        width = self.get_allocated_width()
+        self.paned.set_position(int(width * 0.75))  # main = 3/4, sidebar = 1/4
+
     def on_destroy(self, *args):
-        self.stream_manager.stop_stream()
+        self.stream_manager_main.stop_stream()
+        self.stream_manager_rear.stop_stream()
         Gtk.main_quit()
 
 

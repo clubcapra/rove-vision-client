@@ -7,33 +7,62 @@ import numpy as np
 
 Gst.init(None)
 
-host = "192.168.1.137" # jetson-rove.local
+host = "192.168.1.137"  # jetson-rove.local
 
 STREAMS = {
-    "front": {
-        "width": 1920,
-        "height": 1080,
-        "url": f"rtsp://{host}:8554/frontcam"
+    # "front": {
+    #     "width": 1920,
+    #     "height": 1080,
+    #     "url": f"rtsp://{host}:8554/frontcam"
+    # },
+    # "rear": {
+    #     "width": 1920,
+    #     "height": 1080,
+    #     "url": f"rtsp://{host}:8554/rearcam"
+    # },
+    # "insta360": {
+    #     "width": 2880,
+    #     "height": 1440,
+    #     "url": f"rtsp://{host}:8554/raw360"
+    # },
+    # "zedmini": {
+    #     "width": 1280,
+    #     "height": 720,
+    #     "url": f"rtsp://{host}:8554/zedmini"
+    # },
+    "laptopcam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
     },
-    "rear": {
-        "width": 1920,
-        "height": 1080,
-        "url": f"rtsp://{host}:8554/rearcam"
+    "frontcam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    },
+    "rearcam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
     },
     "insta360": {
-        "width": 2880,
-        "height": 1440,
-        "url": f"rtsp://{host}:8554/raw360"
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
     },
     "zedmini": {
-        "width":  1280,
-        "height": 720,
-        "url": f"rtsp://{host}:8554/zedmini"
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
     }
+
 }
 
 class StreamManager:
-    def __init__(self):
+    def __init__(self, control_panel):
+        self.control_panel = control_panel
+        self.control_panel.subscribe(self)
+
         self.rtsp_pipeline = None
         self.display_pipeline = None
         self.appsink = None
@@ -43,13 +72,11 @@ class StreamManager:
         self.caps_set = False
         self.is_pan_zoom = False
 
-        # Pan/zoom params
         self.angle = 0.0
         self.zoom = 1.0
         self.top = 50.0
         self.requested_width = 2160
 
-        # Reconnect logic
         self._last_stream_name = None
         self._last_video_widget = None
         self.reconnect_attempts = 0
@@ -60,7 +87,7 @@ class StreamManager:
     def switch_stream(self, name, video_widget):
         self._last_stream_name = name
         self._last_video_widget = video_widget
-        self._reconnecting = False  # reset flag on success
+        self._reconnecting = False
         self.reconnect_attempts = 0
 
         self.is_pan_zoom = name == "insta360"
@@ -73,11 +100,17 @@ class StreamManager:
         print(f"Switching to {name} ({stream_info['url']})")
         video_widget.show_message(f"Loading {name}...")
 
+        if self.is_pan_zoom:
+            settings = self.control_panel.get_current_settings()
+            self.zoom = settings["zoom"]
+            self.angle = settings["angle"]
+            self.top = settings["top"]
+
+
         width = stream_info.get("width")
         height = stream_info.get("height")
         uri = stream_info.get("url")
 
-        # Display pipeline
         self.display_pipeline = Gst.parse_launch(f"""
             appsrc name=customsrc is-live=true block=true format=time !
             videoconvert ! videoscale ! ximagesink name=videosink sync=false
@@ -96,7 +129,6 @@ class StreamManager:
 
         self.display_pipeline.set_state(Gst.State.PLAYING)
 
-        # RTSP pipeline
         self.rtsp_pipeline = Gst.parse_launch(f"""
             rtspsrc location={uri} latency=0 protocols=tcp !
             rtph264depay ! avdec_h264 ! videoconvert !
@@ -106,7 +138,6 @@ class StreamManager:
         self.appsink = self.rtsp_pipeline.get_by_name("framesink")
         self.appsink.connect("new-sample", self.on_new_sample)
 
-        # Add bus watch for errors
         bus = self.rtsp_pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message", self.on_bus_message)
@@ -125,12 +156,10 @@ class StreamManager:
                 print(f"    Debug Info: {debug}")
             self.stop_stream()
             self.schedule_reconnect()
-
         elif msg_type == Gst.MessageType.EOS:
             print("[!] RTSP End of Stream")
             self.stop_stream()
             self.schedule_reconnect()
-
         elif msg_type == Gst.MessageType.STATE_CHANGED:
             old, new, pending = message.parse_state_changed()
             if message.src == self.rtsp_pipeline:
@@ -150,7 +179,6 @@ class StreamManager:
 
     def _retry_connection(self):
         if not self._last_stream_name or not self._last_video_widget:
-            print("[!] Missing stream info for reconnection.")
             self._reconnecting = False
             return False
 
@@ -164,11 +192,11 @@ class StreamManager:
         try:
             self.switch_stream(self._last_stream_name, self._last_video_widget)
             print("[✓] Reconnection successful.")
-            return False  # stop retry loop
+            return False
         except Exception as e:
             print(f"[!] Reconnect attempt failed: {e}")
             GLib.timeout_add(self.reconnect_delay_ms, self._retry_connection)
-            return False  # reschedule manually
+            return False
 
     def on_new_sample(self, sink):
         sample = sink.emit("pull-sample")
@@ -192,10 +220,7 @@ class StreamManager:
                 processed = frame
 
             if not self.caps_set:
-                if self.is_pan_zoom:
-                    caps_str = f"video/x-raw,format=BGR,width={self.requested_width},height={height},framerate=30/1"
-                else:
-                    caps_str = f"video/x-raw,format=BGR,width={width},height={height},framerate=30/1"
+                caps_str = f"video/x-raw,format=BGR,width={self.requested_width if self.is_pan_zoom else width},height={height},framerate=30/1"
                 self.appsrc.set_caps(Gst.Caps.from_string(caps_str))
                 self.caps_set = True
 
@@ -272,3 +297,14 @@ class StreamManager:
 
     def set_output_width(self, width: int):
         self.requested_width = max(64, width)
+
+    # === Called by ControlPanel ===
+    def on_control_update(self, *, zoom=None, angle=None, top=None):
+        if not self.is_pan_zoom:
+            return
+        if zoom is not None:
+            self.set_zoom(zoom)
+        if angle is not None:
+            self.set_angle(angle)
+        if top is not None:
+            self.set_top(top)

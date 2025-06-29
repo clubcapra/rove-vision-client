@@ -1,174 +1,97 @@
-#!/usr/bin/env python3
 import gi
-from stream_manager import STREAMS
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gst", "1.0")
 gi.require_version("GstVideo", "1.0")
-from gi.repository import Gtk, Gst, GLib, Gdk, GdkX11, GstVideo
-
-Gst.init(None)
+from gi.repository import Gtk, Gdk, GLib
 
 class ControlPanel(Gtk.Box):
-    def __init__(self, stream_manager, video_widget):
+    def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.set_size_request(250, -1)
-        
-        self.look_back = False
+        self.set_size_request(200, 300)
 
-        self.stream_manager = stream_manager
-        
+        self.angle = 0      # 0 to 359
+        self.top = 50       # 0 to 100
+        self.zoom = 50      # 0 to 100
+
         self.pan_timer = None
         self.pan_direction = None
-        
-        self.zoom_timer = None
-        self.zoom_direction = None
+        self.subscribers = []  # list of StreamManagers
 
+        label = Gtk.Label(label="Controls for Dynamic 360°")
+        label.set_margin_top(5)
+        self.pack_start(label, False, False, 0)
 
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_hexpand(False)
-        scroll.set_vexpand(True)
-        scroll.set_size_request(250, -1)
-
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        inner.set_margin_top(10)
-        inner.set_margin_bottom(10)
-        inner.set_margin_start(10)
-        inner.set_margin_end(10)
-
-        # Camera buttons
-        # inner.pack_start(Gtk.Label(label="Cameras:"), False, False, 0)
-        # for name in STREAMS:
-        #     btn = Gtk.Button(label=name)
-        #     btn.connect("clicked", lambda b, n=name: stream_manager.switch_stream(n, video_widget))
-        #     inner.pack_start(btn, False, False, 0)
-
-        # Pan/Zoom controls
-        inner.pack_start(Gtk.Separator(), False, False, 10)
-        inner.pack_start(Gtk.Label(label="Pan/Zoom:"), False, False, 0)
-        inner.pack_start(Gtk.Label(label="(Only Dynamic 360° enabled)"), False, False, 0)
-
+        # === Pan Grid ===
         grid = Gtk.Grid()
-        btn_up = Gtk.Button(label="↑")
-        btn_left = Gtk.Button(label="←")
-        btn_right = Gtk.Button(label="→")
-        btn_down = Gtk.Button(label="↓")
-        btn_reset = Gtk.Button(label="Reset")
+        grid.set_row_spacing(4)
+        grid.set_column_spacing(4)
 
-        # Enable controls
-        for btn in [btn_up, btn_left, btn_right, btn_down, btn_reset]:
-            btn.set_sensitive(True)
+        self.btn_up = Gtk.Button(label="↑")
+        self.btn_left = Gtk.Button(label="←")
+        self.btn_right = Gtk.Button(label="→")
+        self.btn_down = Gtk.Button(label="↓")
+        self.btn_n = Gtk.Button(label="N")
 
-        grid.attach(btn_up, 1, 0, 1, 1)
-        grid.attach(btn_left, 0, 1, 1, 1)
-        grid.attach(btn_reset, 1, 1, 1, 1)
-        grid.attach(btn_right, 2, 1, 1, 1)
-        grid.attach(btn_down, 1, 2, 1, 1)
-        inner.pack_start(grid, False, False, 5)
+        grid.attach(self.btn_up,    1, 0, 1, 1)
+        grid.attach(self.btn_left,  0, 1, 1, 1)
+        grid.attach(self.btn_n,     1, 1, 1, 1)
+        grid.attach(self.btn_right, 2, 1, 1, 1)
+        grid.attach(self.btn_down,  1, 2, 1, 1)
 
-        # Zoom controls
-        zoom_box = Gtk.Box(spacing=4)
-        btn_minus = Gtk.Button(label="-")
-        btn_plus = Gtk.Button(label="+")
-        self.entry = Gtk.Entry()
-        self.entry.set_width_chars(5)
+        self.pack_start(grid, False, False, 0)
 
-        for widget in [btn_minus, btn_plus, self.entry]:
-            widget.set_sensitive(True)
+        # === Zoom Slider ===
+        self.zoom_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        self.zoom_slider.set_value(self.zoom)
+        self.zoom_slider.connect("value-changed", self.on_zoom_slider)
+        self.pack_start(self.zoom_slider, False, False, 0)
 
-        zoom_box.pack_start(btn_minus, False, False, 0)
-        zoom_box.pack_start(self.entry, True, True, 0)
-        zoom_box.pack_start(btn_plus, False, False, 0)
-        inner.pack_start(zoom_box, False, False, 5)
+        # === NSEW Buttons ===
+        box_nsew = Gtk.Box(spacing=4)
+        self.btn_w = Gtk.Button(label="W")
+        self.btn_s = Gtk.Button(label="S")
+        self.btn_e = Gtk.Button(label="E")
+        for btn in [self.btn_w, self.btn_s, self.btn_e]:
+            btn.set_hexpand(True)
+            box_nsew.pack_start(btn, True, True, 0)
+        self.pack_start(box_nsew, False, False, 0)
 
-        self.zoom_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1.0, 4.0, 0.1)
-        self.zoom_slider.set_digits(1)
-        self.zoom_slider.set_sensitive(True)
-        inner.pack_start(self.zoom_slider, False, False, 5)
+        # === Events ===
+        self.btn_up.connect("button-press-event", self.start_pan, "up")
+        self.btn_up.connect("button-release-event", self.stop_pan)
+        self.btn_down.connect("button-press-event", self.start_pan, "down")
+        self.btn_down.connect("button-release-event", self.stop_pan)
+        self.btn_left.connect("button-press-event", self.start_pan, "left")
+        self.btn_left.connect("button-release-event", self.stop_pan)
+        self.btn_right.connect("button-press-event", self.start_pan, "right")
+        self.btn_right.connect("button-release-event", self.stop_pan)
 
-        scroll.add(inner)
-        
-        self.reflect_zoom()
-        
-        self.pack_start(scroll, True, True, 0)
+        self.btn_n.connect("clicked", lambda w: self.set_direction(0))
+        self.btn_w.connect("clicked", lambda w: self.set_direction(270))
+        self.btn_s.connect("clicked", lambda w: self.set_direction(180))
+        self.btn_e.connect("clicked", lambda w: self.set_direction(90))
 
-        # === Signal handlers ===
-        for btn, direction in [
-            (btn_left, "left"),
-            (btn_right, "right"),
-            (btn_up, "up"),
-            (btn_down, "down")
-        ]:
-            btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
-            btn.connect("button-press-event", self.start_pan, direction)
-            btn.connect("button-release-event", self.stop_pan)
-            
-        btn_reset.connect("clicked", self.on_reset)
+    def subscribe(self, stream_manager):
+        self.subscribers.append(stream_manager)
 
-        for btn, direction in [
-            (btn_plus, "in"),
-            (btn_minus, "out")
-        ]:
-            btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
-            btn.connect("button-press-event", self.start_zoom, direction)
-            btn.connect("button-release-event", self.stop_zoom)
+    def notify_all(self):
+        for sub in self.subscribers:
+            sub.on_control_update(self.angle, self.top, self.zoom)
 
-        self.zoom_slider.connect("value-changed", self.on_slider_zoom)
-        
-        
-        self.entry.connect("activate", self.on_entry)
-        self.entry.connect("focus-out-event", self.on_entry)
-        
-    def on_pan_left(self, _):
-        self.stream_manager.set_angle(self.stream_manager.angle - 10 / self.stream_manager.zoom)
+    def set_direction(self, angle_deg):
+        self.angle = angle_deg % 360
+        self.top = 50
+        self.notify_all()
 
-    def on_pan_right(self, _):
-        self.stream_manager.set_angle(self.stream_manager.angle + 10 / self.stream_manager.zoom)
+    def on_zoom_slider(self, slider):
+        self.zoom = int(slider.get_value())
+        self.notify_all()
 
-    def on_pan_up(self, _):
-        self.stream_manager.set_top(self.stream_manager.top - 5 / self.stream_manager.zoom)
-
-    def on_pan_down(self, _):
-        self.stream_manager.set_top(self.stream_manager.top + 5 / self.stream_manager.zoom)
-
-    def on_reset(self, _):
-        self.stream_manager.set_top(50)
-        if self.stream_manager.angle % 180 == 0:
-            self.look_back = not self.look_back
-            
-        if self.look_back:
-            self.stream_manager.set_angle(180)
-        else:
-            self.stream_manager.set_angle(0)
-        
-        self.stream_manager.set_zoom(1)
-        self.reflect_zoom()
-
-    def adjust_zoom(self, delta):
-        self.stream_manager.set_zoom(self.stream_manager.zoom + delta)
-        self.reflect_zoom()
-
-    def on_slider_zoom(self, _):
-        self.stream_manager.set_zoom(self.zoom_slider.get_value())
-        self.reflect_zoom()
-        
-    def on_entry(self, widget, *args):
-        try:
-            value = float(self.entry.get_text())
-            value = max(1.0, min(4.0, value))
-            self.stream_manager.set_zoom(value)
-            self.reflect_zoom()
-        except ValueError:
-            pass  # ignore invalid input
-
-    def reflect_zoom(self):
-        self.zoom_slider.set_value(self.stream_manager.zoom)
-        self.entry.set_text(f"{self.stream_manager.zoom}")
-        
     def start_pan(self, widget, event, direction):
-        if self.pan_timer is None:
-            self.pan_direction = direction
-            self.pan_timer = GLib.timeout_add(50, self.do_pan)  # 100ms repeat
+        if self.pan_timer:
+            GLib.source_remove(self.pan_timer)
+        self.pan_direction = direction
+        self.pan_timer = GLib.timeout_add(50, self.perform_pan)
 
     def stop_pan(self, widget, event):
         if self.pan_timer:
@@ -176,35 +99,22 @@ class ControlPanel(Gtk.Box):
             self.pan_timer = None
             self.pan_direction = None
 
-    def do_pan(self):
-        if self.pan_direction == "left":
-            self.on_pan_left(None)
-        elif self.pan_direction == "right":
-            self.on_pan_right(None)
-        elif self.pan_direction == "up":
-            self.on_pan_up(None)
+    def perform_pan(self):
+        if self.pan_direction == "up":
+            self.top = max(0, self.top - 1)
         elif self.pan_direction == "down":
-            self.on_pan_down(None)
-        return True  # Keep repeating
+            self.top = min(100, self.top + 1)
+        elif self.pan_direction == "left":
+            self.angle = (self.angle - 2) % 360
+        elif self.pan_direction == "right":
+            self.angle = (self.angle + 2) % 360
+
+        self.notify_all()
+        return True
     
-    def start_zoom(self, widget, event, direction):
-        if self.zoom_timer is None:
-            self.zoom_direction = direction
-            self.zoom_timer = GLib.timeout_add(50, self.do_zoom)
-
-    def stop_zoom(self, widget, event):
-        if self.zoom_timer:
-            GLib.source_remove(self.zoom_timer)
-            self.zoom_timer = None
-            self.zoom_direction = None
-
-    def do_zoom(self):
-        delta = 0.1 if self.zoom_direction == "in" else -0.1
-        
-        if self.stream_manager.zoom > 5:
-            delta = delta * 2
-        if self.stream_manager.zoom > 10:
-            delta = delta * 5
-        self.adjust_zoom(delta)
-        return True  # Keep repeating
-
+    def get_current_settings(self):
+        return {
+            "angle": self.angle,
+            "top": self.top,
+            "zoom": self.zoom
+        }
