@@ -13,7 +13,7 @@ Gst.init(None)
 
 # Constants
 CONTROL_PANEL_MIN_WIDTH = 200  # px
-CONTROL_PANEL_MIN_HEIGHT = 200  # px
+CONTROL_PANEL_MIN_HEIGHT = 220  # px
 
 class MainWindow(Gtk.Window):
     def __init__(self):

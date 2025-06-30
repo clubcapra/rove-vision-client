@@ -10,51 +10,51 @@ Gst.init(None)
 host = "192.168.1.137"  # jetson-rove.local
 
 STREAMS = {
-    "front": {
-        "width": 1920,
-        "height": 1080,
-        "url": f"rtsp://{host}:8554/frontcam"
-    },
-    "rear": {
-        "width": 1920,
-        "height": 1080,
-        "url": f"rtsp://{host}:8554/rearcam"
-    },
-    "insta360": {
-        "width": 2880,
-        "height": 1440,
-        "url": f"rtsp://{host}:8554/raw360"
-    },
-    # "zedmini": {
-    #     "width": 1280,
-    #     "height": 720,
-    #     "url": f"rtsp://{host}:8554/zedmini"
+    # "front": {
+    #     "width": 1920,
+    #     "height": 1080,
+    #     "url": f"rtsp://{host}:8554/frontcam"
     # },
-    # "laptopcam": {
-    #     "width": 2592,
-    #     "height": 1944,
-    #     "url": "rtsp://localhost:8554/test"
-    # },
-    # "frontcam": {
-    #     "width": 2592,
-    #     "height": 1944,
-    #     "url": "rtsp://localhost:8554/test"
-    # },
-    # "rearcam": {
-    #     "width": 2592,
-    #     "height": 1944,
-    #     "url": "rtsp://localhost:8554/test"
+    # "rear": {
+    #     "width": 1920,
+    #     "height": 1080,
+    #     "url": f"rtsp://{host}:8554/rearcam"
     # },
     # "insta360": {
-    #     "width": 2592,
-    #     "height": 1944,
-    #     "url": "rtsp://localhost:8554/test"
+    #     "width": 2880,
+    #     "height": 1440,
+    #     "url": f"rtsp://{host}:8554/raw360"
     # },
-    # "zedmini": {
-    #     "width": 2592,
-    #     "height": 1944,
-    #     "url": "rtsp://localhost:8554/test"
-    # }
+    "zedmini": {
+        "width": 1280,
+        "height": 720,
+        "url": f"rtsp://{host}:8554/zedmini"
+    },
+    "laptopcam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    },
+    "frontcam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    },
+    "rearcam": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    },
+    "insta360": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    },
+    "zedmini": {
+        "width": 2592,
+        "height": 1944,
+        "url": "rtsp://localhost:8554/test"
+    }
 }
 
 class StreamManager:
@@ -79,7 +79,7 @@ class StreamManager:
         self._last_stream_name = None
         self._last_video_widget = None
         self.reconnect_attempts = 0
-        self.reconnect_max_attempts = 5
+        self.reconnect_max_attempts = 500
         self.reconnect_delay_ms = 2000
         self._reconnecting = False
 
