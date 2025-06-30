@@ -11,7 +11,7 @@ class ControlPanel(Gtk.Box):
 
         self.angle = 0      # 0 to 359
         self.top = 50       # 0 to 100
-        self.zoom = 50      # 0 to 100
+        self.zoom = 1      # 1 to 20
 
         self.pan_timer = None
         self.pan_direction = None
@@ -41,7 +41,7 @@ class ControlPanel(Gtk.Box):
         self.pack_start(grid, False, False, 0)
 
         # === Zoom Slider ===
-        self.zoom_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        self.zoom_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 20, 1)
         self.zoom_slider.set_value(self.zoom)
         self.zoom_slider.connect("value-changed", self.on_zoom_slider)
         self.pack_start(self.zoom_slider, False, False, 0)
@@ -76,7 +76,8 @@ class ControlPanel(Gtk.Box):
 
     def notify_all(self):
         for sub in self.subscribers:
-            sub.on_control_update(self.angle, self.top, self.zoom)
+            sub.on_control_update(angle=self.angle, top=self.top, zoom=self.zoom)
+
 
     def set_direction(self, angle_deg):
         self.angle = angle_deg % 360

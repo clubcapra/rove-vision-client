@@ -298,7 +298,7 @@ class StreamManager:
         self.requested_width = max(64, width)
 
     # === Called by ControlPanel ===
-    def on_control_update(self, *, zoom=None, angle=None, top=None):
+    def on_control_update(self, zoom, angle, top):
         if not self.is_pan_zoom:
             return
         if zoom is not None:
