@@ -11,13 +11,13 @@ host = "rove-hotspot-enrich"  # jetson-rove.local
 
 STREAMS = {
     "front": {
-        "width": 1920,
-        "height": 1080,
+        "width": 640,
+        "height": 360,
         "url": f"rtsp://{host}:8554/frontcam"
     },
     "rear": {
-        "width": 1920,
-        "height": 1080,
+        "width": 640,
+        "height": 360,
         "url": f"rtsp://{host}:8554/rearcam"
     },
     "insta360": {
@@ -79,7 +79,7 @@ class StreamManager:
         self._last_stream_name = None
         self._last_video_widget = None
         self.reconnect_attempts = 0
-        self.reconnect_max_attempts = 500
+        self.reconnect_max_attempts = 5000
         self.reconnect_delay_ms = 2000
         self._reconnecting = False
 
