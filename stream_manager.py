@@ -7,7 +7,7 @@ import numpy as np
 
 Gst.init(None)
 
-host = "rove-hotspot-enrich"  # jetson-rove.local
+host = "192.168.199.41"  # dongle hostname/ip
 
 STREAMS = {
     "front": {
@@ -127,9 +127,9 @@ class StreamManager:
             area.connect("realize", lambda widget: self.sink.set_window_handle(widget.get_window().get_xid()))
 
         self.display_pipeline.set_state(Gst.State.PLAYING)
-
+        #protocols=tcp  just after latency=0
         self.rtsp_pipeline = Gst.parse_launch(f"""
-            rtspsrc location={uri} latency=0 protocols=tcp !
+            rtspsrc location={uri} latency=0 !
             rtph264depay ! avdec_h264 ! videoconvert !
             video/x-raw,format=BGR !
             appsink name=framesink emit-signals=true max-buffers=1 drop=true
