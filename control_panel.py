@@ -9,6 +9,12 @@ class ControlPanel(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.set_size_request(200, 300)
 
+        self.set_margin_start(10)
+        self.set_margin_end(10)
+        self.set_margin_top(10)
+        self.set_margin_bottom(10)
+
+
         self.angle = 0      # 0 to 359
         self.top = 50       # 0 to 100
         self.zoom = 1      # 1 to 20
