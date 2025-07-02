@@ -21,14 +21,14 @@ STREAMS = {
         "url": f"rtsp://{host}:8554/rearcam"
     },
     "insta360": {
-        "width": 2880,
-        "height": 1440,
+        "width": 1920,
+        "height": 1080,
         "url": f"rtsp://{host}:8554/raw360"
     },
-    "zedmini": {
-        "width": 1280,
-        "height": 720,
-        "url": f"rtsp://{host}:8554/zedmini"
+    "arm": {
+        "width": 640,
+        "height": 360,
+        "url": f"rtsp://{host}:8554/arm"
     }
     # "laptopcam": {
     #     "width": 2592,
