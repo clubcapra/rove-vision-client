@@ -26,7 +26,7 @@ class MainWindow(Gtk.Window):
         self.set_size_request(min_width, min_height)
 
         # Paned layout
-        self.paned = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
+        self.paned = Gtk.Paned.new(Gtk.Orientation.VERTICAL)
         self.add(self.paned)
 
         # Control publisher
@@ -42,13 +42,13 @@ class MainWindow(Gtk.Window):
         self.secondary_viewport = VideoWidget(self.stream_manager_rear)
 
         # Sidebar
-        vbox_sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        vbox_sidebar.set_size_request(CONTROL_PANEL_MIN_WIDTH, -1)
-        vbox_sidebar.pack_start(self.control_panel, False, False, 0)
-        vbox_sidebar.pack_start(self.secondary_viewport, True, True, 0)
+        # vbox_sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        # vbox_sidebar.set_size_request(CONTROL_PANEL_MIN_WIDTH, -1)
+        # vbox_sidebar.pack_start(self.control_panel, False, False, 0)
+        # vbox_sidebar.pack_start(self.secondary_viewport, True, True, 0)
 
         self.paned.pack1(self.main_viewport, resize=True, shrink=False)
-        self.paned.pack2(vbox_sidebar, resize=False, shrink=False)
+        self.paned.pack2(self.secondary_viewport, resize=False, shrink=False)
 
         # Update divider dynamically on resize
         self.connect("configure-event", self.on_resize)

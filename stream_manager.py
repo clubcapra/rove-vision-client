@@ -1,3 +1,4 @@
+
 import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GLib
@@ -69,12 +70,6 @@ class StreamManager:
         self.running = False
         self._framecount = 0
         self.caps_set = False
-        self.is_pan_zoom = False
-
-        self.angle = 0.0
-        self.zoom = 1.0
-        self.top = 50.0
-        self.requested_width = 2160
 
         self._last_stream_name = None
         self._last_video_widget = None
@@ -89,7 +84,6 @@ class StreamManager:
         self._reconnecting = False
         self.reconnect_attempts = 0
 
-        self.is_pan_zoom = name == "insta360"
         stream_info = STREAMS.get(name)
         if not stream_info:
             print(f"[!] Unknown stream: {name}")
@@ -98,13 +92,6 @@ class StreamManager:
         self.stop_stream()
         print(f"Switching to {name} ({stream_info['url']})")
         video_widget.show_message(f"Loading {name}...")
-
-        if self.is_pan_zoom:
-            settings = self.control_panel.get_current_settings()
-            self.zoom = settings["zoom"]
-            self.angle = settings["angle"]
-            self.top = settings["top"]
-
 
         width = stream_info.get("width")
         height = stream_info.get("height")
@@ -127,7 +114,7 @@ class StreamManager:
             area.connect("realize", lambda widget: self.sink.set_window_handle(widget.get_window().get_xid()))
 
         self.display_pipeline.set_state(Gst.State.PLAYING)
-        #protocols=tcp  just after latency=0
+
         self.rtsp_pipeline = Gst.parse_launch(f"""
             rtspsrc location={uri} latency=0 !
             rtph264depay ! avdec_h264 ! videoconvert !
@@ -213,42 +200,17 @@ class StreamManager:
 
         try:
             frame = np.ndarray((height, width, 3), dtype=np.uint8, buffer=map_info.data)
-            if self.is_pan_zoom:
-                processed = self.apply_pan_zoom(frame)
-            else:
-                processed = frame
 
             if not self.caps_set:
-                caps_str = f"video/x-raw,format=BGR,width={self.requested_width if self.is_pan_zoom else width},height={height},framerate=30/1"
+                caps_str = f"video/x-raw,format=BGR,width={width},height={height},framerate=30/1"
                 self.appsrc.set_caps(Gst.Caps.from_string(caps_str))
                 self.caps_set = True
 
-            self.push_frame_to_appsrc(processed)
+            self.push_frame_to_appsrc(frame)
         finally:
             buf.unmap(map_info)
 
         return Gst.FlowReturn.OK
-
-    def apply_pan_zoom(self, img):
-        height = img.shape[0]
-        width = img.shape[1]
-
-        crop_width = int(self.requested_width / self.zoom)
-        crop_height = int(height / self.zoom)
-
-        start_y = int((height - crop_height) * self.top / 100.0)
-        start_x = (width - crop_width) // 2 + int(self.angle * width / 360.0)
-        start_x = start_x % width
-
-        if start_x + crop_width <= width:
-            requested_part = img[start_y:start_y + crop_height, start_x:start_x + crop_width]
-        else:
-            part1 = img[start_y:start_y + crop_height, start_x:]
-            part2 = img[start_y:start_y + crop_height, :start_x + crop_width - width]
-            requested_part = np.hstack((part1, part2))
-
-        resized = cv2.resize(requested_part, (self.requested_width, height))
-        return resized
 
     def push_frame_to_appsrc(self, frame: np.ndarray):
         if not self.running or self.appsrc is None:
@@ -283,27 +245,6 @@ class StreamManager:
 
         cv2.destroyAllWindows()
 
-    def set_zoom(self, zoom: float):
-        self.zoom = max(1.0, zoom)
-
-    def set_angle(self, angle: float):
-        self.angle = angle % 360
-        if self.angle < 0:
-            self.angle += 360
-
-    def set_top(self, top_percent: float):
-        self.top = max(0.0, min(top_percent, 100.0))
-
-    def set_output_width(self, width: int):
-        self.requested_width = max(64, width)
-
     # === Called by ControlPanel ===
     def on_control_update(self, zoom, angle, top):
-        if not self.is_pan_zoom:
-            return
-        if zoom is not None:
-            self.set_zoom(zoom)
-        if angle is not None:
-            self.set_angle(angle)
-        if top is not None:
-            self.set_top(top)
+        pass
